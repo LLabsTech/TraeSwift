@@ -65,13 +65,13 @@ alias trae-swift=".build/release/TraeSwift"
 
 ```bash
 # Run a simple task
-./trae-swift run "Create a hello world Python script"
+trae-swift run "Create a hello world Python script"
 
 # Run with Doubao
-./trae-swift run "Create a hello world Python script" --provider doubao --model doubao-pro-4k
+trae-swift run "Create a hello world Python script" --provider doubao --model doubao-pro-4k
 
 # Run with Google Gemini
-./trae-swift run "Create a hello world Python script" --provider google --model gemini-2.5-flash
+trae-swift run "Create a hello world Python script" --provider google --model gemini-2.5-flash
 
 # Alternative: Run directly with Swift
 swift run TraeSwift run "Create a hello world Python script"
@@ -125,33 +125,33 @@ The main entry point is the `trae-swift` command with several subcommands:
 
 ```bash
 # Basic task execution
-./trae-swift run "Create a Python script that calculates fibonacci numbers"
+trae-swift run "Create a Python script that calculates fibonacci numbers"
 
 # With specific provider and model
-./trae-swift run "Fix the bug in main.py" --provider anthropic --model claude-sonnet-4-20250514
+trae-swift run "Fix the bug in main.py" --provider anthropic --model claude-sonnet-4-20250514
 
 # Using OpenRouter with any supported model
-./trae-swift run "Optimize this code" --provider openrouter --model "openai/gpt-4o"
-./trae-swift run "Add documentation" --provider openrouter --model "anthropic/claude-3.5-sonnet"
+trae-swift run "Optimize this code" --provider openrouter --model "openai/gpt-4o"
+trae-swift run "Add documentation" --provider openrouter --model "anthropic/claude-3.5-sonnet"
 
 # Using Google Gemini
-./trae-swift run "Implement a data parsing function" --provider google --model gemini-2.5-pro
+trae-swift run "Implement a data parsing function" --provider google --model gemini-2.5-pro
 
 # With verbose output
-./trae-swift run "Refactor the database module" --verbose
+trae-swift run "Refactor the database module" --verbose
 
 # Save trajectory for debugging
-./trae-swift run "Update the API endpoints" --trajectory debug_session.json
+trae-swift run "Update the API endpoints" --trajectory debug_session.json
 ```
 
 #### `trae-swift interactive` - Interactive Mode
 
 ```bash
 # Start interactive session
-./trae-swift interactive
+trae-swift interactive
 
 # With custom configuration
-./trae-swift interactive --provider openai --model gpt-4o
+trae-swift interactive --provider openai --model gpt-4o
 ```
 
 In interactive mode, you can:
@@ -164,10 +164,10 @@ In interactive mode, you can:
 #### `trae-swift show-config` - Configuration Status
 
 ```bash
-./trae-swift show-config
+trae-swift show-config
 
 # With custom config file
-./trae-swift show-config --config my_config.json
+trae-swift show-config --config my_config.json
 ```
 
 ### Configuration
@@ -381,40 +381,6 @@ protocol Tool {
 - Real-time state updates to console
 - Comprehensive step recording with metadata
 
-## 📋 Feature Parity Status
-
-### ✅ **100% Feature Parity Achieved**
-
-The Swift implementation now provides complete feature parity with the Python Trae Agent:
-
-- **CLI Interface**: All commands (`run`, `interactive`, `show-config`, `tools`) with identical functionality
-- **LLM Providers**: All 7 providers (OpenAI, Anthropic, Azure, Google, Ollama, OpenRouter, Doubao)
-- **Configuration System**: JSON config with environment variable overrides and .env file support
-- **Agent Execution**: Complete state management with thinking → calling_tool → reflecting → completed flow
-- **Console Output**: Real-time progress display with colors, formatting, and Lakeview integration
-- **Trajectory Recording**: Comprehensive execution logging compatible with Python format
-- **Interactive Mode**: Full conversational interface with all Python commands
-- **Tool System**: All 6 tools with enhanced implementations:
-  - BashTool with persistent sessions and environment variables
-  - RunTool with output truncation and error recovery
-  - TextEditorTool with str_replace, insert, and view ranges
-  - JSONEditTool with full JSONPath support using Sextant library
-  - SequentialThinkingTool with iterative reasoning
-  - TaskDoneTool for completion signaling
-- **Error Handling**: Advanced error reflection system with LLM-powered recovery
-- **Parallel Execution**: Safe concurrent tool execution using Swift's TaskGroup
-- **Provider Optimizations**: Native tool support for Anthropic, structured outputs for OpenAI
-- **Environment Resolution**: Complete priority system (CLI > ENV > Config > Default)
-
-### 🚀 **Swift-Specific Enhancements**
-
-Beyond parity, the Swift implementation offers:
-- **Compile-time Safety**: Type errors caught before runtime
-- **Memory Efficiency**: No garbage collection pauses
-- **Native Performance**: Zero interpreter overhead
-- **Thread Safety**: Guaranteed by Swift's actor model and sendable protocols
-- **Cross-platform Binary**: Single executable for macOS, Linux, and Windows
-
 ## 🧪 Testing
 
 ```bash
@@ -428,45 +394,6 @@ swift test --verbose
 swift test --filter TraeSwiftTests
 ```
 
-## 🤝 Contributing
-
-The Swift implementation welcomes contributions! Please follow these guidelines:
-
-### **Development Setup**
-```bash
-# Clone and setup
-git clone https://github.com/yourusername/TraeSwift.git
-cd TraeSwift
-
-# Build in debug mode
-swift build
-
-# Run tests
-swift test
-
-# Format code (if you have swift-format installed)
-swift-format --in-place --recursive Sources/ Tests/
-```
-
-### **Swift-Specific Guidelines**
-- Follow Swift API design guidelines
-- Use Swift 6 strict concurrency features
-- Add comprehensive tests for new functionality
-- Maintain compatibility with Python configuration format
-- Update documentation for new features
-- Ensure cross-platform compatibility
-
-### **Code Style**
-- Use Swift naming conventions (camelCase, PascalCase)
-- Prefer value types (structs) over reference types when appropriate
-- Use `async/await` for asynchronous operations
-- Implement proper error handling with typed errors
-- Add documentation comments for public APIs
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## 🙏 Acknowledgments
 
 - **Original Trae Agent Team**: For creating the excellent Python implementation that served as the foundation
@@ -478,5 +405,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [**Original Trae Agent (Python)**](https://github.com/bytedance/trae-agent): The original Python implementation
 - [**Swift Argument Parser**](https://github.com/apple/swift-argument-parser): CLI interface framework
-- [**ShellOut**](https://github.com/JohnSundell/ShellOut): Shell command execution library
+- [**ShellOut**](https://github.com/Maxim-Lanskoy/ShellOut): Shell command execution library
 - [**OpenAI Swift**](https://github.com/MacPaw/OpenAI): OpenAI API client for Swift
