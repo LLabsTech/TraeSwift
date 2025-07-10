@@ -19,7 +19,7 @@ There are many ways you can contribute to Trae Agent:
 2. Clone your fork:
 
    ```bash
-   git clone https://github.com/bytedance/trae-agent.git
+   git clone https://github.com/LLabsTech/TraeSwift.git
    cd trae-agent
    ```
 
