@@ -7,11 +7,41 @@ class DoubaoLLMClient: LLMClient {
     
     init(apiKey: String, model: String = "doubao-pro-4k", baseURL: String = "https://ark.cn-beijing.volces.com/api/v3") {
         // Doubao (ByteDance) uses OpenAI-compatible API
-        let config = OpenAI.Configuration(
-            token: apiKey,
-            host: URL(string: baseURL)?.host ?? "ark.cn-beijing.volces.com",
-            scheme: "https"
-        )
+        let config: OpenAI.Configuration
+        
+        if let url = URL(string: baseURL) {
+            let host = url.host ?? "ark.cn-beijing.volces.com"
+            let scheme = url.scheme ?? "https"
+            let port = url.port
+            
+            // The MacPaw OpenAI library automatically adds /v1/chat/completions to the host
+            // If the user's baseURL already includes /v1, we need to adjust for this
+            // Example: user has http://192.168.3.182:1234/v1
+            // but library will create http://192.168.3.182:1234/v1/chat/completions
+            // So we should just use http://192.168.3.182:1234
+            
+            if let port = port {
+                config = OpenAI.Configuration(
+                    token: apiKey,
+                    host: host,
+                    port: port,
+                    scheme: scheme
+                )
+            } else {
+                config = OpenAI.Configuration(
+                    token: apiKey,
+                    host: host,
+                    scheme: scheme
+                )
+            }
+        } else {
+            // Fallback configuration
+            config = OpenAI.Configuration(
+                token: apiKey,
+                host: "ark.cn-beijing.volces.com",
+                scheme: "https"
+            )
+        }
         
         self.client = OpenAI(configuration: config)
         self.model = model

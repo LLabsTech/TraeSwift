@@ -6,12 +6,19 @@ class AnthropicLLMClient: LLMClient {
     private let model: String
     private let supportsNativeTools: Bool
     private let maxRetries: Int
+    private let urlSession: URLSession
     
     init(apiKey: String, model: String = "claude-sonnet-4-20250514", baseURL: String = "https://api.anthropic.com", maxRetries: Int = 3) {
         self.apiKey = apiKey
         self.model = model
         self.baseURL = baseURL
         self.maxRetries = maxRetries
+        
+        // Configure URLSession with extended timeouts for LLM responses
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 300.0 // 5 minutes
+        config.timeoutIntervalForResource = 600.0 // 10 minutes
+        self.urlSession = URLSession(configuration: config)
         
         // Enable native tools for Claude models that support them
         self.supportsNativeTools = model.contains("claude-3") || model.contains("claude-sonnet") || model.contains("claude-haiku") || model.contains("claude-opus")
@@ -91,7 +98,7 @@ class AnthropicLLMClient: LLMClient {
         let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
         request.httpBody = jsonData
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await urlSession.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LLMError.networkError(NSError(domain: "InvalidResponse", code: 0))

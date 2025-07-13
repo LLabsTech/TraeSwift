@@ -33,7 +33,11 @@ final class TextEditorTool: Tool, @unchecked Sendable {
     let description = """
     Advanced text editor for viewing and editing files with line-based operations
     
-    IMPORTANT: All paths must be absolute (starting with /), not relative.
+    PATH HANDLING:
+    - Use absolute paths (starting with /) for precise file location
+    - Relative paths or simple filenames will be created in the current working directory
+    - System paths (like /usr, /etc, /System) are automatically redirected to safe locations
+    - Files requested in root (like "/file.txt") will be created in the working directory
     
     Supported operations:
     - view: Display file contents with line numbers, optionally within a range
@@ -45,7 +49,8 @@ final class TextEditorTool: Tool, @unchecked Sendable {
     - View entire file: {"command": "view", "path": "/path/to/file.txt"}
     - View lines 1-50: {"command": "view", "path": "/path/to/file.txt", "view_range": [1, 50]}
     - View from line 20 to end: {"command": "view", "path": "/path/to/file.txt", "view_range": [20, -1]}
-    - Create file: {"command": "create", "path": "/path/to/new.txt", "content": "Initial content"}
+    - Create file in working dir: {"command": "create", "path": "fibonacci.py", "content": "def fib():..."}
+    - Create file in specific dir: {"command": "create", "path": "/Users/name/fibonacci.py", "content": "def fib():..."}
     - Replace text: {"command": "str_replace", "path": "/path/to/file.txt", "old_str": "old text", "new_str": "new text"}
     - Insert at line 5: {"command": "insert", "path": "/path/to/file.txt", "line_number": 5, "new_text": "inserted line"}
     
@@ -67,7 +72,7 @@ final class TextEditorTool: Tool, @unchecked Sendable {
             ),
             "path": JSONSchema.Property(
                 type: "string",
-                description: "Absolute path to the file (must start with /)",
+                description: "Path to the file - can be absolute, relative, or just filename. Unsafe paths are automatically redirected to working directory.",
                 items: nil,
                 properties: nil,
                 required: nil
@@ -121,6 +126,69 @@ final class TextEditorTool: Tool, @unchecked Sendable {
     private let maxFileLines = 10000
     private let contextLines = 3
     
+    private func sanitizePath(_ path: String) -> String {
+        // If path is relative or trying to write to root, redirect to current working directory
+        if !path.hasPrefix("/") || isRestrictedPath(path) {
+            let currentWorkingDirectory = FileManager.default.currentDirectoryPath
+            
+            // Extract filename from the path
+            let filename = (path as NSString).lastPathComponent
+            
+            // If no filename or empty, generate a safe default
+            let safeFilename = filename.isEmpty ? "file.txt" : filename
+            
+            // Combine with current working directory
+            return (currentWorkingDirectory as NSString).appendingPathComponent(safeFilename)
+        }
+        
+        return path
+    }
+    
+    private func isRestrictedPath(_ path: String) -> Bool {
+        let restrictedPrefixes = [
+            "/System/", "/usr/", "/bin/", "/sbin/", "/etc/", "/var/",
+            "/Library/", "/Applications/", "/private/"
+        ]
+        
+        // Check if trying to write directly to root
+        if path.hasPrefix("/") && path.dropFirst().firstIndex(of: "/") == nil {
+            return true
+        }
+        
+        return restrictedPrefixes.contains { path.hasPrefix($0) }
+    }
+    
+    private func validateWritePermissions(url: URL) throws {
+        let parentURL = url.deletingLastPathComponent()
+        
+        // Check if parent directory exists and is writable
+        let fileManager = FileManager.default
+        
+        // If parent doesn't exist, check if we can create it
+        if !fileManager.fileExists(atPath: parentURL.path) {
+            // Try to find the first existing parent directory
+            var checkURL = parentURL
+            while !fileManager.fileExists(atPath: checkURL.path) && checkURL.path != "/" {
+                checkURL = checkURL.deletingLastPathComponent()
+            }
+            
+            // Check if we can write to the existing parent
+            if !fileManager.isWritableFile(atPath: checkURL.path) {
+                throw ToolError.executionFailed("Cannot write to directory: \(checkURL.path). Permission denied.")
+            }
+        } else {
+            // Parent exists, check if it's writable
+            if !fileManager.isWritableFile(atPath: parentURL.path) {
+                throw ToolError.executionFailed("Cannot write to directory: \(parentURL.path). Permission denied.")
+            }
+        }
+        
+        // If file exists, check if it's writable
+        if fileManager.fileExists(atPath: url.path) && !fileManager.isWritableFile(atPath: url.path) {
+            throw ToolError.executionFailed("Cannot write to file: \(url.path). Permission denied.")
+        }
+    }
+    
     func execute(arguments: String) async throws -> String {
         // Parse arguments
         guard let data = arguments.data(using: .utf8) else {
@@ -135,12 +203,14 @@ final class TextEditorTool: Tool, @unchecked Sendable {
             throw ToolError.invalidArguments("Invalid JSON arguments: \(error.localizedDescription)")
         }
         
-        // Validate absolute path
-        guard args.path.hasPrefix("/") else {
-            throw ToolError.invalidArguments("Path must be absolute (start with /), got: \(args.path)")
-        }
+        // Validate and sanitize path
+        let sanitizedPath = sanitizePath(args.path)
+        let url = URL(fileURLWithPath: sanitizedPath)
         
-        let url = URL(fileURLWithPath: args.path)
+        // Validate write permissions for create/modify operations
+        if ["create", "str_replace", "insert"].contains(args.command.lowercased()) {
+            try validateWritePermissions(url: url)
+        }
         
         switch args.command.lowercased() {
         case "view":
@@ -241,7 +311,15 @@ final class TextEditorTool: Tool, @unchecked Sendable {
         try content.write(to: url, atomically: true, encoding: .utf8)
         
         let lines = content.components(separatedBy: .newlines)
-        return "File created successfully: \(url.path)\nContent (\(lines.count) lines):\n\n" + formatContentWithLineNumbers(content)
+        var result = "File created successfully: \(url.path)\n"
+        
+        // Add path redirection notice if applicable
+        if url.path.contains(FileManager.default.currentDirectoryPath) && !url.path.hasPrefix(FileManager.default.currentDirectoryPath + "/") {
+            result += "Note: File created in working directory for security.\n"
+        }
+        
+        result += "Content (\(lines.count) lines):\n\n" + formatContentWithLineNumbers(content)
+        return result
     }
     
     private func performStrReplace(url: URL, oldStr: String?, newStr: String?) async throws -> String {

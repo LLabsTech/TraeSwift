@@ -136,12 +136,21 @@ actor CLIConsole {
     }
     
     private func startDisplayLoop() async {
+        // Clear screen and hide cursor for better TUI experience
+        Swift.print("\u{1B}[2J\u{1B}[H", terminator: "")
+        Swift.print("\u{1B}[?25l", terminator: "") // Hide cursor
+        fflush(stdout)
+        
         while await getDisplayActive() {
-            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second for more responsive updates
             if await getDisplayActive() {
                 await refreshDisplay()
             }
         }
+        
+        // Show cursor again when done
+        Swift.print("\u{1B}[?25h", terminator: "")
+        fflush(stdout)
     }
     
     private func getDisplayActive() async -> Bool {
@@ -149,10 +158,119 @@ actor CLIConsole {
     }
     
     private func refreshDisplay() async {
-        // In a real implementation, this would use terminal control codes
-        // to update the display without clearing the screen
-        // For now, we'll just update the current progress
-        printTaskProgress()
+        // Move cursor to top-left and clear entire screen
+        Swift.print("\u{1B}[H", terminator: "")
+        
+        // Get terminal dimensions (default to 80x24 if not available)
+        let terminalWidth = getTerminalWidth()
+        
+        // Display current execution state
+        await displayFullInterface(terminalWidth: terminalWidth)
+        
+        fflush(stdout)
+    }
+    
+    private func displayFullInterface(terminalWidth: Int) async {
+        guard let execution = agentExecution else { 
+            print("Initializing agent...", color: .cyan)
+            return 
+        }
+        
+        // Header section
+        displayHeader(execution: execution, width: terminalWidth)
+        
+        // Progress section
+        displayProgressSection(execution: execution, width: terminalWidth)
+        
+        // Recent steps section (auto-scrolling, showing latest)
+        displayRecentSteps(width: terminalWidth)
+        
+        // Footer with status
+        displayFooter(execution: execution, width: terminalWidth)
+    }
+    
+    private func displayHeader(execution: AgentExecution, width: Int) {
+        let border = "═".repeating(times: min(width, 80))
+        print(border, color: .blue)
+        let title = "🤖 TRAE AGENT - TASK EXECUTION"
+        let padding = max(0, (width - title.count) / 2)
+        print(" ".repeating(times: padding) + title, color: .blue)
+        print(border, color: .blue)
+    }
+    
+    private func displayProgressSection(execution: AgentExecution, width: Int) {
+        let progress = Double(execution.currentStep) / Double(execution.maxSteps)
+        let barWidth = min(50, width - 20)
+        let filledWidth = Int(progress * Double(barWidth))
+        let progressBar = "█".repeating(times: filledWidth) + "░".repeating(times: barWidth - filledWidth)
+        
+        print("Progress: [\(progressBar)] \(execution.currentStep)/\(execution.maxSteps) (\(Int(progress * 100))%)", color: .yellow)
+        print("Status: \(execution.status.uppercased())", color: getStatusColor(execution.status))
+        
+        if let startTime = execution.startTime {
+            let duration = Date().timeIntervalSince(startTime)
+            print("Runtime: \(formatDuration(duration))", color: .cyan)
+        }
+        
+        print("─".repeating(times: min(width, 80)), color: .gray)
+    }
+    
+    private func displayRecentSteps(width: Int) {
+        let availableLines = getTerminalHeight() - 15 // Reserve space for header/footer
+        let recentSteps = consoleSteps.values.sorted { $0.stepNumber > $1.stepNumber }.prefix(min(3, availableLines / 5))
+        
+        if !recentSteps.isEmpty {
+            print("Recent Steps:", color: .white)
+            for step in recentSteps {
+                displayCompactStep(step, width: width)
+            }
+        }
+    }
+    
+    private func displayCompactStep(_ step: ConsoleStep, width: Int) {
+        let stateEmoji = getStateEmoji(step.state)
+        let timestamp = formatTimestamp(step.timestamp)
+        
+        print("  \(stateEmoji) Step \(step.stepNumber) [\(timestamp)] - \(step.state.rawValue)", color: getStateColor(step.state))
+        
+        if let llmResponse = step.llmResponse, !llmResponse.isEmpty {
+            let truncated = String(llmResponse.prefix(width - 8))
+            print("    💭 \(truncated)\(llmResponse.count > width - 8 ? "..." : "")", color: .white)
+        }
+        
+        if let toolCalls = step.toolCalls, !toolCalls.isEmpty {
+            let toolNames = toolCalls.map { $0.function.name }.joined(separator: ", ")
+            print("    🔧 Tools: \(toolNames)", color: .yellow)
+        }
+        
+        if let error = step.error {
+            let truncated = String(error.prefix(width - 8))
+            print("    ❌ \(truncated)\(error.count > width - 8 ? "..." : "")", color: .red)
+        }
+    }
+    
+    private func displayFooter(execution: AgentExecution, width: Int) {
+        print("─".repeating(times: min(width, 80)), color: .gray)
+        let footer = "🚀 TraeSwift v0.1 | Press Ctrl+C to stop"
+        print(footer, color: .gray)
+    }
+    
+    private func getTerminalWidth() -> Int {
+        // Try to get actual terminal width, fallback to 80
+        if let columns = ProcessInfo.processInfo.environment["COLUMNS"],
+           let width = Int(columns) {
+            return width
+        }
+        return 80
+    }
+    
+    private func getTerminalHeight() -> Int {
+        // Try to get actual terminal height, fallback to 24
+        if let lines = ProcessInfo.processInfo.environment["LINES"],
+           let height = Int(lines) {
+            return height
+        }
+        return 24
     }
     
     private func printTaskProgress() {
@@ -307,10 +425,16 @@ actor CLIConsole {
         let seconds = Int(duration) % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
+    
+    private func formatTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter.string(from: date)
+    }
 }
 
 enum ConsoleColor {
-    case black, red, green, yellow, blue, magenta, cyan, white, reset
+    case black, red, green, yellow, blue, magenta, cyan, white, gray, reset
     
     var ansiCode: String {
         switch self {
@@ -322,6 +446,7 @@ enum ConsoleColor {
         case .magenta: return "\u{001B}[35m"
         case .cyan: return "\u{001B}[36m"
         case .white: return "\u{001B}[37m"
+        case .gray: return "\u{001B}[90m"
         case .reset: return "\u{001B}[0m"
         }
     }

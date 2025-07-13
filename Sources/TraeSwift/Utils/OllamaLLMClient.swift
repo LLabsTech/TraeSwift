@@ -3,10 +3,17 @@ import Foundation
 class OllamaLLMClient: LLMClient {
     private let baseURL: String
     private let model: String
+    private let urlSession: URLSession
     
     init(model: String = "llama3.1", baseURL: String = "http://localhost:11434") {
         self.model = model
         self.baseURL = baseURL
+        
+        // Configure URLSession with extended timeouts for LLM responses
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 300.0 // 5 minutes
+        config.timeoutIntervalForResource = 600.0 // 10 minutes
+        self.urlSession = URLSession(configuration: config)
     }
     
     func chat(messages: [Message], tools: [ToolDefinition]?, temperature: Double?, maxTokens: Int?) async throws -> ChatCompletionResponse {
@@ -39,7 +46,7 @@ class OllamaLLMClient: LLMClient {
         let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
         request.httpBody = jsonData
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await urlSession.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LLMError.networkError(NSError(domain: "InvalidResponse", code: 0))
