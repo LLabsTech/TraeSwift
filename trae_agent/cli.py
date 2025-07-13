@@ -162,7 +162,7 @@ def run(
 @click.option("--model-base-url", help="Base URL for the model API")
 @click.option("--api-key", "-k", help="API key (or set via environment variable)")
 @click.option("--config-file", help="Path to configuration file", default="trae_config.json")
-@click.option("--max-steps", help="Maximum number of execution steps", type=int, default=20)
+@click.option("--max-steps", help="Maximum number of execution steps", type=int, default=50)
 @click.option("--trajectory-file", "-t", help="Path to save trajectory file")
 def interactive(
     provider: str | None = None,

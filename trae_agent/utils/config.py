@@ -69,7 +69,7 @@ class Config:
                 self._config = {}
 
         self.default_provider = self._config.get("default_provider", "anthropic")
-        self.max_steps = self._config.get("max_steps", 20)
+        self.max_steps = self._config.get("max_steps", 50)
         self.model_providers = {}
         self.enable_lakeview = self._config.get("enable_lakeview", True)
 
@@ -140,7 +140,7 @@ def load_config(
     model: str | None = None,
     model_base_url: str | None = None,
     api_key: str | None = None,
-    max_steps: int | None = 20,
+    max_steps: int | None = 50,
 ) -> Config:
     """
     load_config loads provider , model , model base url , api key , and maximum steps. By default, the provider is set to be OpenAI.
@@ -150,7 +150,7 @@ def load_config(
         model: the model that you want to use
         model_base_url: the base url of the model
         api_key: your api key
-        maximum_step: maximum number of step of the agent. Default setting is 20
+        maximum_step: maximum number of step of the agent. Default setting is 50
 
     Return:
         Config Object
