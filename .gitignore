@@ -176,6 +176,11 @@ cython_debug/
 #.idea/
 
 trae-config-local.json
+trae_config.json
 
 # Trajectories
 /trajectories/
+
+# VS Code settings
+.vscode/
+!.vscode/launch.template.json

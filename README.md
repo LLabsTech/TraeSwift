@@ -46,6 +46,23 @@ make uv-sync
 
 We recommend to configure Trae Agent using the config file.
 
+**Configuration Setup:**
+
+1. **Copy the example configuration file:**
+
+   ```bash
+   cp trae_config.json.example trae_config.json
+   ```
+
+2. **Edit `trae_config.json` and replace the placeholder values with your actual credentials:**
+   - Replace `"your_openai_api_key"` with your actual OpenAI API key
+   - Replace `"your_anthropic_api_key"` with your actual Anthropic API key
+   - Replace `"your_google_api_key"` with your actual Google API key
+   - Replace `"your_azure_base_url"` with your actual Azure base URL
+   - Replace other placeholder URLs and API keys as needed
+
+**Note:** The `trae_config.json` file is ignored by git to prevent accidentally committing your API keys.
+
 You can also set your API keys as environment variables:
 
 ```bash
@@ -232,13 +249,32 @@ For more details, see [docs/TRAJECTORY_RECORDING.md](docs/TRAJECTORY_RECORDING.m
 For detailed contribution guidelines, please refer to [CONTRIBUTING.md](CONTRIBUTING.md).
 
 1. Fork the repository
-2. Set up a development install(`make install-dev pre-commit-install`)
+2. Set up a development install:
+
+   ```bash
+   make install-dev
+   ```
+
 3. Create a feature branch (`git checkout -b feature/amazing-feature`)
 4. Make your changes
 5. Add tests for new functionality
-6. Commit your changes (`git commit -m 'Add amazing feature'`)
-7. Push to the branch (`git push origin feature/amazing-feature`)
-8. Open a Pull Request
+6. Pre-commit check
+
+   ```bash
+    make pre-commit
+    or:
+    make uv-pre-commit
+   ```
+
+    if having formatting error,please try:
+
+   ```
+    make fix-format
+   ```
+
+7. Commit your changes (`git commit -m 'Add amazing feature'`)
+8. Push to the branch (`git push origin feature/amazing-feature`)
+9. Open a Pull Request
 
 ### Development Guidelines
 
