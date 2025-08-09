@@ -3,48 +3,38 @@
 
 """Base Agent class for LLM-based agents."""
 
+import contextlib
 from abc import ABC, abstractmethod
 
-from ..tools.base import Tool, ToolCall, ToolExecutor, ToolResult
-from ..tools.ckg.ckg_database import clear_older_ckg
-from ..utils.cli_console import CLIConsole
-from ..utils.config import Config, ModelParameters
-from ..utils.llm_basics import LLMMessage, LLMResponse
-from ..utils.llm_client import LLMClient
-from ..utils.trajectory_recorder import TrajectoryRecorder
-from .agent_basics import AgentExecution, AgentState, AgentStep
+from trae_agent.agent.agent_basics import AgentExecution, AgentState, AgentStep, AgentStepState
+from trae_agent.tools import tools_registry
+from trae_agent.tools.base import Tool, ToolCall, ToolExecutor, ToolResult
+from trae_agent.tools.ckg.ckg_database import clear_older_ckg
+from trae_agent.utils.cli import CLIConsole
+from trae_agent.utils.config import AgentConfig, ModelConfig
+from trae_agent.utils.llm_clients.llm_basics import LLMMessage, LLMResponse
+from trae_agent.utils.llm_clients.llm_client import LLMClient
+from trae_agent.utils.trajectory_recorder import TrajectoryRecorder
 
 
-class Agent(ABC):
+class BaseAgent(ABC):
     """Base class for LLM-based agents."""
 
-    def __init__(self, config: Config | None = None, llm_client: LLMClient | None = None):
+    def __init__(self, agent_config: AgentConfig):
         """Initialize the agent.
 
         Args:
-            config: Configuration object containing model parameters and other settings.
-                   Required if llm_client is not provided.
-            llm_client: Optional pre-configured LLMClient instance.
-                       If provided, it will be used instead of creating a new one from config.
+            agent_config: Configuration object containing model parameters and other settings.
         """
-        if llm_client is None:
-            if config is None:
-                raise ValueError("Either config or llm_client must be provided")
-            self._llm_client = LLMClient(
-                config.default_provider,
-                config.model_providers[config.default_provider],
-                config.max_steps,
-            )
-            self._model_parameters = config.model_providers[config.default_provider]
-            self._max_steps = config.max_steps
-        else:
-            self._llm_client = llm_client
-            self._model_parameters = llm_client.model_parameters
-            self._max_steps = llm_client.max_steps
-
+        self._llm_client = LLMClient(agent_config.model)
+        self._model_config = agent_config.model
+        self._max_steps = agent_config.max_steps
         self._initial_messages: list[LLMMessage] = []
         self._task: str = ""
-        self._tools: list[Tool] = []
+        self._tools: list[Tool] = [
+            tools_registry[tool_name](model_provider=self._model_config.model_provider.provider)
+            for tool_name in agent_config.tools
+        ]
         self._tool_caller: ToolExecutor = ToolExecutor([])
         self._cli_console: CLIConsole | None = None
 
@@ -53,21 +43,6 @@ class Agent(ABC):
 
         # CKG tool-specific: clear the older CKG databases
         clear_older_ckg()
-
-    @classmethod
-    def from_config(cls, config: Config) -> "Agent":
-        """Create an agent instance from a configuration object.
-
-        This factory method provides the traditional config-based initialization
-        while allowing subclasses to customize the instantiation process.
-
-        Args:
-            config: Configuration object containing model parameters and other settings.
-
-        Returns:
-            An instance of the agent.
-        """
-        return cls(config=config)
 
     @property
     def llm_client(self) -> LLMClient:
@@ -78,7 +53,7 @@ class Agent(ABC):
         """Get the trajectory recorder for this agent."""
         return self._trajectory_recorder
 
-    def _set_trajectory_recorder(self, recorder: TrajectoryRecorder | None) -> None:
+    def set_trajectory_recorder(self, recorder: TrajectoryRecorder | None) -> None:
         """Set the trajectory recorder for this agent."""
         self._trajectory_recorder = recorder
         # Also set it on the LLM client
@@ -114,9 +89,9 @@ class Agent(ABC):
         return self._initial_messages
 
     @property
-    def model_parameters(self) -> ModelParameters:
-        """Get the model parameters for the agent."""
-        return self._model_parameters
+    def model_config(self) -> ModelConfig:
+        """Get the model config for the agent."""
+        return self._model_config
 
     @property
     def max_steps(self) -> int:
@@ -146,15 +121,20 @@ class Agent(ABC):
             step_number = 1
 
             while step_number <= self._max_steps:
-                step = self._create_new_step(step_number)
+                step = AgentStep(step_number=step_number, state=AgentStepState.THINKING)
                 try:
                     messages = await self._run_llm_step(step, messages, execution)
-                    self._finalize_step(step, messages, execution)
-                    if step.state == AgentState.COMPLETED:
+                    self._finalize_step(
+                        step, messages, execution
+                    )  # record trajectory for this step and update the CLI console
+                    if execution.agent_state == AgentState.COMPLETED:
                         break
                     step_number += 1
-                except Exception as e:
-                    self._handle_step_error(step, e, messages, execution)
+                except Exception as error:
+                    execution.agent_state = AgentState.ERROR
+                    step.state = AgentStepState.ERROR
+                    step.error = str(error)
+                    self._finalize_step(step, messages, execution)
                     break
 
             if step_number > self._max_steps and not execution.success:
@@ -164,29 +144,38 @@ class Agent(ABC):
             execution.final_result = f"Agent execution failed: {str(e)}"
 
         execution.execution_time = time.time() - start_time
-        if step:
-            self._update_cli_console(step)
-        return execution
 
-    def _create_new_step(self, step_number: int) -> AgentStep:
-        return AgentStep(step_number=step_number, state=AgentState.THINKING)
+        # Clean up any MCP clients
+        with contextlib.suppress(Exception):
+            await self.cleanup_mcp_clients()
+
+        self._update_cli_console(step, execution)
+        return execution
 
     async def _run_llm_step(
         self, step: "AgentStep", messages: list["LLMMessage"], execution: "AgentExecution"
     ) -> list["LLMMessage"]:
-        step.state = AgentState.THINKING
-        self._update_cli_console(step)
-        llm_response = self._llm_client.chat(messages, self._model_parameters, self._tools)
+        # Display thinking state
+        step.state = AgentStepState.THINKING
+        self._update_cli_console(step, execution)
+        # Get LLM response
+        llm_response = self._llm_client.chat(messages, self._model_config, self._tools)
         step.llm_response = llm_response
-        self._update_cli_console(step)
+
+        # Display step with LLM response
+        self._update_cli_console(step, execution)
+
+        # Update token usage
         self._update_llm_usage(llm_response, execution)
 
         if self.llm_indicates_task_completed(llm_response):
             if self._is_task_completed(llm_response):
-                self._llm_complete_response_task_handler(llm_response, step, execution, messages)
+                execution.agent_state = AgentState.COMPLETED
+                execution.final_result = llm_response.content
+                execution.success = True
                 return messages
             else:
-                step.state = AgentState.THINKING
+                execution.agent_state = AgentState.RUNNING
                 return [LLMMessage(role="user", content=self.task_incomplete_message())]
         else:
             tool_calls = llm_response.tool_calls
@@ -195,22 +184,9 @@ class Agent(ABC):
     def _finalize_step(
         self, step: "AgentStep", messages: list["LLMMessage"], execution: "AgentExecution"
     ) -> None:
+        step.state = AgentStepState.COMPLETED
         self._record_handler(step, messages)
-        self._update_cli_console(step)
-        execution.steps.append(step)
-
-    def _handle_step_error(
-        self,
-        step: "AgentStep",
-        error: Exception,
-        messages: list["LLMMessage"],
-        execution: "AgentExecution",
-    ) -> None:
-        step.state = AgentState.ERROR
-        step.error = str(error)
-        self._update_cli_console(step)
-        self._record_handler(step, messages)
-        self._update_cli_console(step)
+        self._update_cli_console(step, execution)
         execution.steps.append(step)
 
     def reflect_on_result(self, tool_results: list[ToolResult]) -> str | None:
@@ -247,38 +223,26 @@ class Agent(ABC):
         """Return a message indicating that the task is incomplete. Override for custom logic."""
         return "The task is incomplete. Please try again."
 
-    def _update_cli_console(self, step: AgentStep) -> None:
-        if self.cli_console:
-            self.cli_console.update_status(step)
+    @abstractmethod
+    async def cleanup_mcp_clients(self) -> None:
+        """Clean up MCP clients. Override in subclasses that use MCP."""
+        pass
 
-    def _update_llm_usage(self, llm_response: LLMResponse, execution: AgentExecution) -> None:
+    def _update_cli_console(
+        self, step: AgentStep | None = None, agent_execution: AgentExecution | None = None
+    ) -> None:
+        if self.cli_console:
+            self.cli_console.update_status(step, agent_execution)
+
+    def _update_llm_usage(self, llm_response: LLMResponse, execution: AgentExecution):
         if not llm_response.usage:
-            return None
+            return
         # if execution.total_tokens is None then set it to be llm_response.usage else sum it up
         # execution.total_tokens is not None
         if not execution.total_tokens:
             execution.total_tokens = llm_response.usage
         else:
             execution.total_tokens += llm_response.usage
-        return None
-
-    def _llm_complete_response_task_handler(
-        self,
-        llm_response: LLMResponse,
-        step: AgentStep,
-        execution: AgentExecution,
-        messages: list[LLMMessage],
-    ) -> None:
-        """
-        update states
-        """
-        step.state = AgentState.COMPLETED
-        execution.final_result = llm_response.content
-        execution.success = True
-
-        self._record_handler(step, messages)
-        self._update_cli_console(step)
-        execution.steps.append(step)
 
     def _record_handler(self, step: AgentStep, messages: list[LLMMessage]) -> None:
         if self.trajectory_recorder:
@@ -306,11 +270,11 @@ class Agent(ABC):
             ]
             return messages
 
-        step.state = AgentState.CALLING_TOOL
+        step.state = AgentStepState.CALLING_TOOL
         step.tool_calls = tool_calls
         self._update_cli_console(step)
 
-        if self.model_parameters.parallel_tool_calls:
+        if self._model_config.parallel_tool_calls:
             tool_results = await self._tool_caller.parallel_tool_call(tool_calls)
         else:
             tool_results = await self._tool_caller.sequential_tool_call(tool_calls)
@@ -323,7 +287,7 @@ class Agent(ABC):
 
         reflection = self.reflect_on_result(tool_results)
         if reflection:
-            step.state = AgentState.REFLECTING
+            step.state = AgentStepState.REFLECTING
             step.reflection = reflection
 
             # Display reflection

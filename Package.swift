@@ -11,8 +11,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.6.1"),
         .package(url: "https://github.com/JohnSundell/ShellOut.git", from: "2.3.0"),
-        .package(url: "https://github.com/MacPaw/OpenAI", from: "0.4.4"),
-        .package(url: "https://github.com/KittyMac/Sextant.git", from: "0.4.0")
+        .package(url: "https://github.com/MacPaw/OpenAI", from: "0.4.5"),
     ],
     targets: [
         .executableTarget(
@@ -21,7 +20,6 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "ShellOut", package: "ShellOut"),
                 .product(name: "OpenAI", package: "OpenAI"),
-                .product(name: "Sextant", package: "Sextant")
             ],
             swiftSettings: [
                 .unsafeFlags(["-parse-as-library"])
